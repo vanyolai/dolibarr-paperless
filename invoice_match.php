@@ -23,9 +23,7 @@ require_once __DIR__.'/class/paperlessinvoicematcher.class.php';
 $langs->loadLangs(array('bills', 'suppliers', 'companies', 'paperless@paperless'));
 
 $canCustomerRead = $user->hasRight('facture', 'lire');
-$canCustomerWrite = $user->hasRight('facture', 'creer');
 $canSupplierRead = $user->hasRight('fournisseur', 'facture', 'lire');
-$canSupplierWrite = $user->hasRight('fournisseur', 'facture', 'creer');
 if (!$canCustomerRead && !$canSupplierRead) {
 	accessforbidden();
 }
@@ -132,9 +130,6 @@ if ($action === 'scanall') {
 		$scanIds[(int) $invoice['id']] = true;
 	}
 } elseif ($action === 'scanone') {
-	if (!paperlessInvoiceCanWrite($kind)) {
-		accessforbidden();
-	}
 	$scanId = GETPOSTINT('invoice_id');
 	if ($scanId > 0) {
 		$scanIds[$scanId] = true;
@@ -320,7 +315,7 @@ foreach ($invoices as $invoice) {
 	}
 	print '</td>';
 	print '<td class="center">';
-	if (paperlessInvoiceCanWrite($kind) && $status !== 'linked' && $status !== 'autolinked') {
+	if ($status !== 'linked' && $status !== 'autolinked') {
 		print '<form method="post" action="'.dol_escape_htmltag($_SERVER['PHP_SELF']).'">';
 		print '<input type="hidden" name="token" value="'.newToken().'">';
 		print '<input type="hidden" name="mainmenu" value="billing">';
