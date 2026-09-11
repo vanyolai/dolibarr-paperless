@@ -229,9 +229,10 @@ class PaperlessInvoiceMatcher
 		if ($documentId <= 0) {
 			return null;
 		}
+		$stableUrl = $this->resolverBase.'?document='.$documentId;
 		$sql = 'SELECT rowid, objecttype, objectid, url, label FROM '.MAIN_DB_PREFIX.'links';
 		$sql .= ' WHERE entity = '.((int) $this->entity);
-		$sql .= " AND url LIKE '%/paperless/open.php?document=".$documentId."%'";
+		$sql .= " AND url = '".$this->db->escape($stableUrl)."'";
 		$sql .= ' ORDER BY rowid ASC';
 		$sql .= $this->db->plimit(1);
 
