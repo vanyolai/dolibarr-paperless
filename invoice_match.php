@@ -14,6 +14,7 @@ if (!$res) {
 
 require_once __DIR__.'/class/paperlessclient.class.php';
 require_once __DIR__.'/class/paperlessinvoicematcher.class.php';
+require_once __DIR__.'/class/paperlessinvoicesearch.class.php';
 
 /** @var Conf $conf */
 /** @var DoliDB $db */
@@ -55,19 +56,43 @@ if ($days <= 0) {
 	$days = 365;
 }
 $days = max(1, min(3650, $days));
+
 $limit = GETPOSTINT('limit');
 if ($limit <= 0) {
 	$limit = 50;
 }
 $limit = max(1, min(200, $limit));
+
 $action = GETPOST('action', 'aZ09');
+
+/**
+ * @param mixed $rawTagIds
+ * @return int[]
+ */
+function paperlessInvoiceMatcherNormalizeTagIds($rawTagIds)
+{
+	if (!is_array($rawTagIds)) {
+		$rawTagIds = ($rawTagIds === '' || $rawTagIds === null) ? array() : array($rawTagIds);
+	}
+	$tagIds = array();
+	foreach ($rawTagIds as $tagId) {
+		$tagId = (int) $tagId;
+		if ($tagId > 0) {
+			$tagIds[$tagId] = $tagId;
+		}
+	}
+	ksort($tagIds);
+	return array_values($tagIds);
+}
+
+$rawTagIds = isset($_POST['tag_ids']) ? $_POST['tag_ids'] : (isset($_GET['tag_ids']) ? $_GET['tag_ids'] : array());
+$tagIds = paperlessInvoiceMatcherNormalizeTagIds($rawTagIds);
 
 $client = new PaperlessClient($apiUrl, $apiToken, $webUrl, $httpTimeout);
 $matcher = new PaperlessInvoiceMatcher($db, $client, (int) $conf->entity);
+$searchClient = new PaperlessInvoiceSearch($apiUrl, $apiToken, $httpTimeout);
 
 /**
- * Whether current user may create links on selected invoice kind.
- *
  * @param string $invoiceKind customer|supplier
  * @return bool
  */
@@ -80,18 +105,121 @@ function paperlessInvoiceCanWrite($invoiceKind)
 }
 
 /**
- * Redirect back to matcher page after a state-changing action.
- *
- * @param string $kind customer|supplier
- * @param int $days Look-back days
- * @param int $limit Row limit
+ * @param int[] $tagIds
+ * @return string
+ */
+function paperlessInvoiceMatcherHiddenTags($tagIds)
+{
+	$html = '';
+	foreach ($tagIds as $tagId) {
+		$html .= '<input type="hidden" name="tag_ids[]" value="'.((int) $tagId).'">';
+	}
+	return $html;
+}
+
+/**
+ * @param int $entity
+ * @param int $userId
+ * @param string $apiUrl
+ * @param string $kind
+ * @param int $days
+ * @param int $limit
+ * @param int[] $tagIds
+ * @return string
+ */
+function paperlessInvoiceMatcherCacheKey($entity, $userId, $apiUrl, $kind, $days, $limit, $tagIds)
+{
+	return hash('sha256', implode('|', array(
+		(int) $entity,
+		(int) $userId,
+		sha1((string) $apiUrl),
+		(string) $kind,
+		(int) $days,
+		(int) $limit,
+		implode(',', $tagIds),
+	)));
+}
+
+/**
+ * @param string $key
+ * @return array<int,array<string,mixed>>
+ */
+function paperlessInvoiceMatcherCacheGet($key)
+{
+	if (empty($_SESSION['paperless_invoice_matcher_cache']) || !is_array($_SESSION['paperless_invoice_matcher_cache'])) {
+		return array();
+	}
+	$now = time();
+	foreach ($_SESSION['paperless_invoice_matcher_cache'] as $cacheKey => $entry) {
+		if (!is_array($entry) || empty($entry['updated']) || ((int) $entry['updated'] + 3600) < $now) {
+			unset($_SESSION['paperless_invoice_matcher_cache'][$cacheKey]);
+		}
+	}
+	$entry = $_SESSION['paperless_invoice_matcher_cache'][$key] ?? null;
+	if (!is_array($entry) || empty($entry['results']) || !is_array($entry['results'])) {
+		return array();
+	}
+	return $entry['results'];
+}
+
+/**
+ * @param string $key
+ * @param array<int,array<string,mixed>> $results
+ * @return void
+ */
+function paperlessInvoiceMatcherCacheSet($key, $results)
+{
+	if (!isset($_SESSION['paperless_invoice_matcher_cache']) || !is_array($_SESSION['paperless_invoice_matcher_cache'])) {
+		$_SESSION['paperless_invoice_matcher_cache'] = array();
+	}
+	$_SESSION['paperless_invoice_matcher_cache'][$key] = array(
+		'updated' => time(),
+		'results' => $results,
+	);
+	if (count($_SESSION['paperless_invoice_matcher_cache']) > 10) {
+		uasort($_SESSION['paperless_invoice_matcher_cache'], function ($a, $b) {
+			return ((int) ($a['updated'] ?? 0)) <=> ((int) ($b['updated'] ?? 0));
+		});
+		while (count($_SESSION['paperless_invoice_matcher_cache']) > 10) {
+			array_shift($_SESSION['paperless_invoice_matcher_cache']);
+		}
+	}
+}
+
+/**
+ * @param string $kind
+ * @param int $days
+ * @param int $limit
+ * @param int[] $tagIds
+ * @param int $focusInvoiceId
  * @return never
  */
-function paperlessInvoiceMatcherRedirect($kind, $days, $limit)
+function paperlessInvoiceMatcherRedirect($kind, $days, $limit, $tagIds, $focusInvoiceId = 0)
 {
-	$baseUrl = dol_buildpath('/paperless/invoice_match.php', 1);
-	header('Location: '.$baseUrl.'?mainmenu=billing&leftmenu=paperless_invoice_match&kind='.rawurlencode($kind).'&days='.((int) $days).'&limit='.((int) $limit));
+	$params = array(
+		'mainmenu' => 'billing',
+		'leftmenu' => 'paperless_invoice_match',
+		'kind' => $kind,
+		'days' => (int) $days,
+		'limit' => (int) $limit,
+	);
+	if (!empty($tagIds)) {
+		$params['tag_ids'] = array_values($tagIds);
+	}
+	$url = dol_buildpath('/paperless/invoice_match.php', 1).'?'.http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+	if ($focusInvoiceId > 0) {
+		$url .= '#invoice-'.((int) $focusInvoiceId);
+	}
+	header('Location: '.$url);
 	exit;
+}
+
+$cacheKey = paperlessInvoiceMatcherCacheKey((int) $conf->entity, (int) $user->id, $apiUrl, $kind, $days, $limit, $tagIds);
+$scanResults = paperlessInvoiceMatcherCacheGet($cacheKey);
+
+if ($action === 'refresh') {
+	$scanResults = array();
+	paperlessInvoiceMatcherCacheSet($cacheKey, $scanResults);
 }
 
 // Manual association from a reviewed Paperless candidate.
@@ -104,15 +232,23 @@ if ($action === 'link') {
 	$invoice = $matcher->getInvoice($kind, $invoiceId);
 	if ($invoice === false) {
 		setEventMessages($matcher->error, null, 'errors');
-		paperlessInvoiceMatcherRedirect($kind, $days, $limit);
+		paperlessInvoiceMatcherRedirect($kind, $days, $limit, $tagIds, $invoiceId);
 	}
+
 	$linkId = $matcher->createLink($kind, $invoiceId, (string) $invoice['match_ref'], $documentId, $user);
 	if ($linkId === false) {
 		setEventMessages($langs->trans('PaperlessInvoiceLinkFailed', $invoice['match_ref'], $matcher->error), null, 'errors');
 	} else {
 		setEventMessages($langs->trans('PaperlessInvoiceLinked', $invoice['match_ref']), null, 'mesgs');
+		$existing = $matcher->getExistingPaperlessLink((string) $invoice['objecttype'], $invoiceId);
+		$scanResults[$invoiceId] = array(
+			'status' => 'linked',
+			'link' => is_array($existing) ? $existing : array(),
+			'candidates' => array(),
+		);
+		paperlessInvoiceMatcherCacheSet($cacheKey, $scanResults);
 	}
-	paperlessInvoiceMatcherRedirect($kind, $days, $limit);
+	paperlessInvoiceMatcherRedirect($kind, $days, $limit, $tagIds, $invoiceId);
 }
 
 $invoices = $matcher->listInvoices($kind, $days, $limit);
@@ -120,12 +256,12 @@ if ($invoices === false) {
 	accessforbidden($matcher->error);
 }
 
-$scanResults = array();
 $scanIds = array();
 if ($action === 'scanall') {
 	if (!paperlessInvoiceCanWrite($kind)) {
 		accessforbidden();
 	}
+	$scanResults = array();
 	foreach ($invoices as $invoice) {
 		$scanIds[(int) $invoice['id']] = true;
 	}
@@ -139,6 +275,7 @@ if ($action === 'scanall') {
 $usedDocumentIds = array();
 $apiFailed = false;
 $autoLinkUnique = ($action === 'scanall');
+
 foreach ($invoices as $invoice) {
 	$invoiceId = (int) $invoice['id'];
 	$existing = $matcher->getExistingPaperlessLink((string) $invoice['objecttype'], $invoiceId);
@@ -150,8 +287,11 @@ foreach ($invoices as $invoice) {
 		$scanResults[$invoiceId] = array('status' => 'linked', 'link' => $existing, 'candidates' => array());
 		continue;
 	}
+
 	if (empty($scanIds[$invoiceId])) {
-		$scanResults[$invoiceId] = array('status' => 'idle', 'candidates' => array());
+		if (!isset($scanResults[$invoiceId])) {
+			$scanResults[$invoiceId] = array('status' => 'idle', 'candidates' => array());
+		}
 		continue;
 	}
 	if ($apiFailed) {
@@ -163,28 +303,30 @@ foreach ($invoices as $invoice) {
 		continue;
 	}
 
-	$search = $matcher->searchReference((string) $invoice['match_ref'], 10);
+	$search = $searchClient->searchReference((string) $invoice['match_ref'], $tagIds, 20);
 	if ($search === false) {
-		$scanResults[$invoiceId] = array('status' => 'error', 'message' => $matcher->error, 'candidates' => array());
+		$scanResults[$invoiceId] = array('status' => 'error', 'message' => $searchClient->error, 'candidates' => array());
 		$apiFailed = true;
 		continue;
 	}
 
 	$exact = $search['exact'];
 	$candidates = array_slice($search['candidates'], 0, 5);
+
 	if (count($exact) === 1 && $autoLinkUnique) {
 		$documentId = !empty($exact[0]['id']) ? (int) $exact[0]['id'] : 0;
 		if ($documentId > 0 && empty($usedDocumentIds[$documentId])) {
 			$linkId = $matcher->createLink($kind, $invoiceId, (string) $invoice['match_ref'], $documentId, $user);
 			if ($linkId !== false) {
 				$usedDocumentIds[$documentId] = true;
-				$scanResults[$invoiceId] = array('status' => 'autolinked', 'document' => $exact[0], 'candidates' => $candidates);
+				$scanResults[$invoiceId] = array('status' => 'autolinked', 'document' => $exact[0], 'candidates' => array());
 				continue;
 			}
 			$scanResults[$invoiceId] = array('status' => 'error', 'message' => $matcher->error, 'candidates' => $candidates);
 			continue;
 		}
 	}
+
 	if (count($exact) > 1) {
 		$scanResults[$invoiceId] = array('status' => 'ambiguous', 'exact_count' => count($exact), 'candidates' => $candidates);
 	} elseif (count($exact) === 1) {
@@ -194,6 +336,16 @@ foreach ($invoices as $invoice) {
 	} else {
 		$scanResults[$invoiceId] = array('status' => 'nomatch', 'candidates' => array());
 	}
+}
+
+if ($action === 'scanall' || $action === 'scanone') {
+	paperlessInvoiceMatcherCacheSet($cacheKey, $scanResults);
+}
+
+$availableTags = $searchClient->listTags(500);
+if ($availableTags === false) {
+	setEventMessages($langs->trans('PaperlessTagFilterUnavailable', $searchClient->error), null, 'warnings');
+	$availableTags = array();
 }
 
 $title = $langs->trans('PaperlessInvoiceMatcher');
@@ -222,6 +374,25 @@ print '</select></td>';
 print '<td>'.$langs->trans('PaperlessLookbackDays').' <input class="width75" type="number" min="1" max="3650" name="days" value="'.((int) $days).'"></td>';
 print '<td>'.$langs->trans('PaperlessInvoiceLimit').' <input class="width75" type="number" min="1" max="200" name="limit" value="'.((int) $limit).'"></td>';
 print '</tr>';
+
+print '<tr class="oddeven">';
+print '<td class="titlefield">'.$langs->trans('PaperlessSearchTags').'</td>';
+print '<td colspan="3">';
+if (!empty($availableTags)) {
+	print '<select name="tag_ids[]" class="flat minwidth300" multiple="multiple" size="'.min(6, max(3, count($availableTags))).'">';
+	foreach ($availableTags as $tag) {
+		$tagId = (int) $tag['id'];
+		$selected = in_array($tagId, $tagIds, true) ? ' selected' : '';
+		print '<option value="'.$tagId.'"'.$selected.'>'.dol_escape_htmltag((string) $tag['name']).'</option>';
+	}
+	print '</select>';
+	print ' <span class="opacitymedium">'.$langs->trans('PaperlessSearchTagsHelp').'</span>';
+} else {
+	print '<span class="opacitymedium">'.$langs->trans('PaperlessNoTagsAvailable').'</span>';
+}
+print '</td>';
+print '</tr>';
+
 print '</table></div>';
 print '<div class="center">';
 print '<button class="button" type="submit" name="action" value="refresh">'.$langs->trans('Refresh').'</button>';
@@ -249,7 +420,8 @@ foreach ($invoices as $invoice) {
 	$invoiceId = (int) $invoice['id'];
 	$result = isset($scanResults[$invoiceId]) ? $scanResults[$invoiceId] : array('status' => 'idle', 'candidates' => array());
 	$invoiceUrl = $matcher->getInvoiceUrl($kind, $invoiceId);
-	print '<tr class="oddeven">';
+
+	print '<tr id="invoice-'.$invoiceId.'" class="oddeven">';
 	print '<td><a href="'.dol_escape_htmltag($invoiceUrl).'">'.dol_escape_htmltag((string) $invoice['ref']).'</a></td>';
 	print '<td>'.dol_escape_htmltag((string) $invoice['thirdparty']).'</td>';
 	print '<td>'.($invoice['date'] ? dol_print_date((int) $invoice['date'], 'day') : '').'</td>';
@@ -292,18 +464,23 @@ foreach ($invoices as $invoice) {
 			}
 			$candidateTitle = trim((string) ($candidate['title'] ?? ''));
 			if ($candidateTitle === '') {
+				$candidateTitle = trim((string) ($candidate['original_file_name'] ?? ''));
+			}
+			if ($candidateTitle === '') {
 				$candidateTitle = '#'.$documentId;
 			}
+
 			print '<div class="nowraponall">';
 			print '<a href="'.dol_escape_htmltag($client->getDocumentUrl($documentId)).'" target="_blank" rel="noopener">'.dol_escape_htmltag($candidateTitle).'</a>';
 			if (paperlessInvoiceCanWrite($kind) && $status !== 'linked' && $status !== 'autolinked') {
-				print ' <form class="inline-block" method="post" action="'.dol_escape_htmltag($_SERVER['PHP_SELF']).'">';
+				print ' <form class="inline-block" method="post" action="'.dol_escape_htmltag($_SERVER['PHP_SELF']).'#invoice-'.$invoiceId.'">';
 				print '<input type="hidden" name="token" value="'.newToken().'">';
 				print '<input type="hidden" name="mainmenu" value="billing">';
 				print '<input type="hidden" name="leftmenu" value="paperless_invoice_match">';
 				print '<input type="hidden" name="kind" value="'.dol_escape_htmltag($kind).'">';
 				print '<input type="hidden" name="days" value="'.((int) $days).'">';
 				print '<input type="hidden" name="limit" value="'.((int) $limit).'">';
+				print paperlessInvoiceMatcherHiddenTags($tagIds);
 				print '<input type="hidden" name="invoice_id" value="'.$invoiceId.'">';
 				print '<input type="hidden" name="document_id" value="'.$documentId.'">';
 				print '<button class="button smallpaddingimp" type="submit" name="action" value="link">'.$langs->trans('PaperlessLinkThis').'</button>';
@@ -314,15 +491,17 @@ foreach ($invoices as $invoice) {
 		print '</div>';
 	}
 	print '</td>';
+
 	print '<td class="center">';
 	if ($status !== 'linked' && $status !== 'autolinked') {
-		print '<form method="post" action="'.dol_escape_htmltag($_SERVER['PHP_SELF']).'">';
+		print '<form method="post" action="'.dol_escape_htmltag($_SERVER['PHP_SELF']).'#invoice-'.$invoiceId.'">';
 		print '<input type="hidden" name="token" value="'.newToken().'">';
 		print '<input type="hidden" name="mainmenu" value="billing">';
 		print '<input type="hidden" name="leftmenu" value="paperless_invoice_match">';
 		print '<input type="hidden" name="kind" value="'.dol_escape_htmltag($kind).'">';
 		print '<input type="hidden" name="days" value="'.((int) $days).'">';
 		print '<input type="hidden" name="limit" value="'.((int) $limit).'">';
+		print paperlessInvoiceMatcherHiddenTags($tagIds);
 		print '<input type="hidden" name="invoice_id" value="'.$invoiceId.'">';
 		print '<button class="button smallpaddingimp" type="submit" name="action" value="scanone">'.$langs->trans('Search').'</button>';
 		print '</form>';
