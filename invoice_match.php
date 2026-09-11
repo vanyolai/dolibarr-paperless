@@ -143,6 +143,7 @@ if ($action === 'scanall') {
 
 $usedDocumentIds = array();
 $apiFailed = false;
+$autoLinkUnique = ($action === 'scanall');
 foreach ($invoices as $invoice) {
 	$invoiceId = (int) $invoice['id'];
 	$existing = $matcher->getExistingPaperlessLink((string) $invoice['objecttype'], $invoiceId);
@@ -176,7 +177,7 @@ foreach ($invoices as $invoice) {
 
 	$exact = $search['exact'];
 	$candidates = array_slice($search['candidates'], 0, 5);
-	if (count($exact) === 1) {
+	if (count($exact) === 1 && $autoLinkUnique) {
 		$documentId = !empty($exact[0]['id']) ? (int) $exact[0]['id'] : 0;
 		if ($documentId > 0 && empty($usedDocumentIds[$documentId])) {
 			$linkId = $matcher->createLink($kind, $invoiceId, (string) $invoice['match_ref'], $documentId, $user);
@@ -191,6 +192,8 @@ foreach ($invoices as $invoice) {
 	}
 	if (count($exact) > 1) {
 		$scanResults[$invoiceId] = array('status' => 'ambiguous', 'exact_count' => count($exact), 'candidates' => $candidates);
+	} elseif (count($exact) === 1) {
+		$scanResults[$invoiceId] = array('status' => 'unique', 'candidates' => $candidates);
 	} elseif (!empty($candidates)) {
 		$scanResults[$invoiceId] = array('status' => 'candidates', 'candidates' => $candidates);
 	} else {
@@ -269,6 +272,8 @@ foreach ($invoices as $invoice) {
 		print '<span class="badge badge-status4">'.$langs->trans('PaperlessAutoLinked').'</span>';
 	} elseif ($status === 'ambiguous') {
 		print '<span class="badge badge-status1">'.$langs->trans('PaperlessAmbiguousMatches', (int) $result['exact_count']).'</span>';
+	} elseif ($status === 'unique') {
+		print '<span class="badge badge-status4">'.$langs->trans('PaperlessUniqueMatch').'</span>';
 	} elseif ($status === 'candidates') {
 		print '<span class="badge badge-status1">'.$langs->trans('PaperlessNoExactMatch').'</span>';
 	} elseif ($status === 'nomatch') {
