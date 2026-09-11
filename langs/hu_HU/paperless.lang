@@ -49,6 +49,7 @@ PaperlessSearchReference=Keresett számlaszám
 PaperlessAlreadyLinked=Már társítva
 PaperlessAutoLinked=Automatikusan társítva
 PaperlessAmbiguousMatches=%s pontos találat - ellenőrzés szükséges
+PaperlessUniqueMatch=Egy pontos találat - társítás előtt ellenőrizhető
 PaperlessNoExactMatch=Nincs egyértelmű pontos találat
 PaperlessNoMatch=Nincs Paperless találat
 PaperlessNoInvoiceReference=Nincs kereshető számlaszám
