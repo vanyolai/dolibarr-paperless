@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - Unreleased
+
+### Added
+
+- Billing / Payment left-menu page for matching existing Paperless documents to Dolibarr invoices.
+- Customer invoice matching by Dolibarr invoice reference.
+- Supplier invoice matching by the supplier's original invoice number, with fallback to the Dolibarr reference.
+- Paperless full-text document search from the server-side API client.
+- Conservative automatic linking only when exactly one strict invoice-number match is found.
+- Manual review and association controls for ambiguous or broader Paperless candidates.
+- Protection against reusing an already-linked stable Paperless document for another Dolibarr object.
+- Configurable switch to enable or disable invoice matching.
+
+### Changed
+
+- Invoice-number verification now tolerates separator differences while requiring alphanumeric boundaries to reduce false-positive substring matches.
+
 ## [0.1.4] - 2026-09-10
 
 Initial standalone release of the Dolibarr Paperless-ngx integration.
