@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Invoice-number verification now tolerates separator differences while requiring alphanumeric boundaries to reduce false-positive substring matches.
 - Invoice search results are kept in the user session so manually linking one candidate does not discard the other results from the current scan.
 - Per-invoice search and manual-link actions return to the invoice row instead of jumping back to the top of the page.
+- The Paperless tag filter is presented as a scrollable checkbox list, allowing zero, one or multiple tags without multi-select keyboard gestures.
 
 ## [0.1.4] - 2026-09-10
 
