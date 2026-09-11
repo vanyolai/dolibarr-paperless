@@ -55,6 +55,31 @@ git -C /path/to/dolibarr/htdocs/custom/paperless pull --ff-only
 
 Then enable **Paperless-ngx integration** from Dolibarr's Modules/Application setup page and open the module configuration.
 
+### Maintainer integration with git subtree
+
+A Dolibarr fork can keep this module inside its own working tree without creating a nested Git repository. Add this repository as a remote and import it with `git subtree`:
+
+```bash
+git remote add paperless https://github.com/vanyolai/dolibarr-paperless.git
+git fetch paperless
+git subtree add --prefix=htdocs/custom/paperless paperless main --squash
+```
+
+Pull a later standalone release or branch into the Dolibarr fork with:
+
+```bash
+git fetch paperless
+git subtree pull --prefix=htdocs/custom/paperless paperless main --squash
+```
+
+Changes made inside the Dolibarr fork can be split and pushed back to the standalone repository when desired:
+
+```bash
+git subtree push --prefix=htdocs/custom/paperless paperless <target-branch>
+```
+
+The containing Dolibarr repository must not ignore `htdocs/custom/paperless`; other external modules can remain ignored.
+
 ## Configuration
 
 Configure the following values in Dolibarr:
