@@ -49,6 +49,7 @@ PaperlessSearchReference=Search reference
 PaperlessAlreadyLinked=Already linked
 PaperlessAutoLinked=Linked automatically
 PaperlessAmbiguousMatches=%s exact matches - review required
+PaperlessUniqueMatch=One exact match - review before linking
 PaperlessNoExactMatch=No unique exact match
 PaperlessNoMatch=No Paperless match
 PaperlessNoInvoiceReference=No invoice number
