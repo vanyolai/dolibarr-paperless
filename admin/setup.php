@@ -58,6 +58,10 @@ $item = $formSetup->newItem('PAPERLESS_REDIRECT_PDF_UPLOADS');
 $item->setAsYesNo();
 $item->helpText = $langs->trans('PAPERLESS_REDIRECT_PDF_UPLOADS_HELP');
 
+$item = $formSetup->newItem('PAPERLESS_INVOICE_MATCHING_ENABLED');
+$item->setAsYesNo();
+$item->helpText = $langs->trans('PAPERLESS_INVOICE_MATCHING_ENABLED_HELP');
+
 $item = $formSetup->newItem('PAPERLESS_HTTP_TIMEOUT');
 $item->fieldAttr['type'] = 'number';
 $item->fieldAttr['min'] = '1';
