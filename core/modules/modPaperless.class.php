@@ -36,6 +36,9 @@ class modPaperless extends DolibarrModules
 		$this->picto = 'file-pdf';
 
 		$this->module_parts = array(
+			'js' => array(
+				'/paperless/js/invoice_match.js',
+			),
 			'hooks' => array(
 				// Register globally because attachment forms are rendered from many
 				// object-specific document pages. The hook itself only changes the
