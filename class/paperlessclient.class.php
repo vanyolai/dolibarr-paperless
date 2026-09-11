@@ -132,6 +132,9 @@ class PaperlessClient
 	/**
 	 * Get one consumption task by UUID.
 	 * Supports both the paginated API v10 response and older array response.
+	 *
+	 * @param string $taskId Task UUID
+	 * @return array<string,mixed>|null|false
 	 */
 	public function getTask($taskId)
 	{
@@ -161,6 +164,7 @@ class PaperlessClient
 	 * Extract final Paperless document ID from a completed task.
 	 * Supports Paperless API v10 and older task representations.
 	 *
+	 * @param string $taskId Task UUID
 	 * @return int|false 0 if pending, positive ID on success, false on failure
 	 */
 	public function resolveDocumentId($taskId)
@@ -214,11 +218,76 @@ class PaperlessClient
 		return 0;
 	}
 
+	/**
+	 * Search documents using Paperless' simple title+content full-text search.
+	 *
+	 * @param string $text Search text
+	 * @param int $limit Maximum number of results to return
+	 * @return array<int,array<string,mixed>>|false
+	 */
+	public function searchDocuments($text, $limit = 10)
+	{
+		$this->clearError();
+		$text = trim((string) $text);
+		if ($text === '') {
+			return array();
+		}
+		$limit = max(1, min(100, (int) $limit));
+		$response = $this->request('GET', '/api/documents/?text='.rawurlencode($text).'&page_size='.$limit);
+		if ($response === false) {
+			return false;
+		}
+		if (is_array($response) && isset($response['results']) && is_array($response['results'])) {
+			return $response['results'];
+		}
+		if (is_array($response)) {
+			return $response;
+		}
+		return array();
+	}
+
+	/**
+	 * Fetch one Paperless document.
+	 *
+	 * @param int $documentId Paperless document ID
+	 * @return array<string,mixed>|false
+	 */
+	public function getDocument($documentId)
+	{
+		$this->clearError();
+		$documentId = (int) $documentId;
+		if ($documentId <= 0) {
+			return $this->fail('Invalid Paperless document ID.');
+		}
+		$response = $this->request('GET', '/api/documents/'.$documentId.'/');
+		if ($response === false) {
+			return false;
+		}
+		if (!is_array($response) || empty($response['id'])) {
+			return $this->fail('Paperless-ngx returned no usable document data.');
+		}
+		return $response;
+	}
+
+	/**
+	 * Return browser-facing Paperless detail URL.
+	 *
+	 * @param int $documentId Paperless document ID
+	 * @return string
+	 */
 	public function getDocumentUrl($documentId)
 	{
 		return $this->webUrl.'/documents/'.((int) $documentId).'/details';
 	}
 
+	/**
+	 * Execute one Paperless REST request and decode JSON.
+	 *
+	 * @param string $method HTTP method
+	 * @param string $path API path beginning with /
+	 * @param mixed $postFields cURL POST fields
+	 * @return mixed|false
+	 */
 	private function request($method, $path, $postFields = null)
 	{
 		if ($this->apiUrl === '' || $this->token === '') {
