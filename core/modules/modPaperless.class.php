@@ -31,7 +31,7 @@ class modPaperless extends DolibarrModules
 		$this->descriptionlong = 'ModulePaperlessDescLong';
 		$this->editor_name = 'Krisztian Vanyolai';
 		$this->editor_url = 'https://github.com/vanyolai/dolibarr-paperless';
-		$this->version = '0.1.4';
+		$this->version = '0.2.0';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
 		$this->picto = 'file-pdf';
 
@@ -68,6 +68,7 @@ class modPaperless extends DolibarrModules
 			5 => array('PAPERLESS_HTTP_TIMEOUT', 'chaine', '30', 'HTTP timeout in seconds', 0, 'current', 0),
 			6 => array('PAPERLESS_RESOLVE_WAIT', 'chaine', '10', 'Seconds to wait for Paperless consumption when opening a queued link', 0, 'current', 0),
 			7 => array('PAPERLESS_TAG_NAME', 'chaine', 'dolibarr', 'Paperless tag applied to documents uploaded from Dolibarr; empty disables tagging', 0, 'current', 0),
+			8 => array('PAPERLESS_INVOICE_MATCHING_ENABLED', 'yesno', 1, 'Enable invoice matching against existing Paperless documents', 0, 'current', 0),
 		);
 
 		$this->tabs = array();
@@ -75,7 +76,24 @@ class modPaperless extends DolibarrModules
 		$this->boxes = array();
 		$this->cronjobs = array();
 		$this->rights = array();
+
+		// Add the matcher under Billing / Payment without introducing a new top menu.
 		$this->menu = array();
+		$r = 0;
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=billing',
+			'type' => 'left',
+			'titre' => 'PaperlessInvoiceMatcherMenu',
+			'mainmenu' => 'billing',
+			'leftmenu' => 'paperless_invoice_match',
+			'url' => '/paperless/invoice_match.php?mainmenu=billing&leftmenu=paperless_invoice_match',
+			'langs' => 'paperless@paperless',
+			'position' => 95,
+			'enabled' => 'isModEnabled("paperless") && getDolGlobalInt("PAPERLESS_INVOICE_MATCHING_ENABLED", 1) && (isModEnabled("invoice") || isModEnabled("supplier_invoice"))',
+			'perms' => '$user->hasRight("facture", "lire") || $user->hasRight("fournisseur", "facture", "lire")',
+			'target' => '',
+			'user' => 0,
+		);
 
 		if (!isModEnabled('paperless')) {
 			$conf->paperless = new stdClass();
