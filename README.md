@@ -99,7 +99,8 @@ The module asks Paperless to search document title and OCR/full-text content for
 
 Automatic association is intentionally conservative:
 
-- exactly one strict match → a native Dolibarr `Link` is created automatically;
+- the per-invoice **Search** action is preview-only and never changes Dolibarr;
+- during the explicit bulk **Search and link unique matches** action, exactly one strict match → a native Dolibarr `Link` is created automatically;
 - no strict match → nothing is changed;
 - multiple strict matches → nothing is changed and the candidates are shown for review;
 - broader Paperless search candidates can be opened and linked manually;
