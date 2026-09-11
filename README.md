@@ -27,7 +27,19 @@ The module was initially developed and tested against Dolibarr 23.
 
 ## Installation
 
-The repository root is the Dolibarr external module itself. Install it as `paperless` under Dolibarr's `htdocs/custom` directory.
+### Release ZIP
+
+Download `module_paperless-<version>.zip` from the GitHub Releases page and upload it in Dolibarr under **Home → Setup → Modules → Deploy/install external app/module**.
+
+The ZIP contains a top-level `paperless/` directory, matching Dolibarr's external-module packaging convention. For manual installation, extract the archive inside `htdocs/custom/` so that the result is:
+
+```text
+htdocs/custom/paperless/
+```
+
+### Git checkout
+
+The repository root is the Dolibarr external module itself. Install it as `paperless` under Dolibarr's `htdocs/custom` directory:
 
 ```bash
 cd /path/to/dolibarr/htdocs/custom
@@ -90,6 +102,10 @@ The API token should be able to upload documents and read task status. If automa
 - Metadata mapping beyond a single configurable tag is not implemented yet.
 - Duplicate-document handling follows the Paperless instance configuration.
 - Deleting a Dolibarr link does not delete the corresponding Paperless document.
+
+## Release packaging
+
+Releases use the Dolibarr package naming convention `module_paperless-VERSION.zip`. The archive always contains `paperless/` as its top-level directory. Release ZIPs are built automatically by GitHub Actions after PHP syntax validation.
 
 ## Possible next steps
 
